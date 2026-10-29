@@ -5,7 +5,7 @@ import useSWR from "swr";
 import { Pencil } from "lucide-react";
 import { Card, PageHeader } from "@/components/ui";
 import { apiPatch } from "@/lib/api-client";
-import { Input } from "../gardens/page";
+import { Input } from "@/components/Input";
 
 interface Profile {
   email: string;

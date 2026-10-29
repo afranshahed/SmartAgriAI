@@ -6,7 +6,7 @@ import useSWR from "swr";
 import { Package, Trash2 } from "lucide-react";
 import { Badge, Card, PageHeader } from "@/components/ui";
 import { apiDelete, apiPost } from "@/lib/api-client";
-import { Input } from "../gardens/page";
+import { Input } from "@/components/Input";
 
 interface Garden { id: string; name: string }
 interface Pot {

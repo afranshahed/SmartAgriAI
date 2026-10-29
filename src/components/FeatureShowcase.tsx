@@ -28,7 +28,7 @@ export function FeatureShowcase() {
           const Icon = item.Icon;
           const active = index === selected;
           return <button key={item.title} type="button" onClick={() => setSelected(index)} aria-pressed={active} className={`group min-h-32 rounded-2xl border p-5 text-left transition motion-reduce:transition-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 ${active ? "border-emerald-300 bg-emerald-50 shadow-sm dark:border-emerald-800 dark:bg-emerald-950/40" : "border-slate-200 bg-white hover:border-emerald-200 hover:shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:hover:border-emerald-900"}`}>
-            <span className={`mb-4 inline-flex rounded-xl p-2.5 ${active ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-600 group-hover:bg-emerald-100 group-hover:text-emerald-700 dark:bg-slate-800 dark:text-slate-300 dark:group-hover:bg-emerald-950 dark:group-hover:text-emerald-300"}`}><Icon size={19} aria-hidden="true" /></span>
+            <span className={`mb-4 inline-flex rounded-xl p-2.5 ${active ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-600 group-hover:bg-emerald-100 group-hover:text-emerald-700 dark:bg-slate-800 dark:text-slate-300 dark:group-hover:bg-emerald-950 dark:group-hover:text-emerald-300"}`}><Icon size={19} aria-hidden /></span>
             <span className="block text-sm font-black text-slate-950 dark:text-white">{item.title}</span>
             <span className="mt-1 block text-sm leading-5 text-slate-500 dark:text-slate-400">{item.summary}</span>
           </button>;
@@ -38,7 +38,7 @@ export function FeatureShowcase() {
         <div className="absolute -right-20 -top-20 h-52 w-52 rounded-full bg-emerald-500/20 blur-3xl" />
         <div className="relative flex h-full flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between"><span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-bold tracking-wide text-emerald-200">Platform capability</span><PreviewIcon size={28} className="text-emerald-300" aria-hidden="true" /></div>
+            <div className="flex items-center justify-between"><span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-bold tracking-wide text-emerald-200">Platform capability</span><PreviewIcon size={28} className="text-emerald-300" aria-hidden /></div>
             <h3 className="mt-8 text-3xl font-black tracking-tight">{feature.title}</h3>
             <p className="mt-4 max-w-md text-base leading-7 text-slate-300">{feature.detail}</p>
           </div>

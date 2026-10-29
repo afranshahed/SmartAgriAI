@@ -7,7 +7,7 @@ import useSWR from "swr";
 import { Satellite, Trash2 } from "lucide-react";
 import { Badge, Card, IconButton, PageHeader } from "@/components/ui";
 import { apiDelete, apiPost } from "@/lib/api-client";
-import { Input } from "../gardens/page";
+import { Input } from "@/components/Input";
 
 interface Garden { id: string; name: string }
 interface Device {
