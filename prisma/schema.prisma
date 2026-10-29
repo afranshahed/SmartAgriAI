@@ -1,0 +1,606 @@
+// SmartAgriAI — unified PostgreSQL schema (Prisma)
+// Collapses smartagriai-main's normalized + legacy models into one schema.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum GardenType {
+  outdoor
+  greenhouse
+  indoor
+  hydroponic
+}
+
+enum ResourceStatus {
+  active
+  inactive
+  archived
+}
+
+enum SoilType {
+  loam
+  clay
+  sandy
+  silt
+  peat
+  potting_mix
+}
+
+enum GrowthStage {
+  seedling
+  vegetative
+  flowering
+  fruiting
+  mature
+  harvested
+}
+
+enum HealthStatus {
+  healthy
+  at_risk
+  diseased
+  recovering
+  unknown
+}
+
+enum DeviceType {
+  esp32_node
+  dht22
+  dht11
+  soil_moisture
+  rain
+  ldr
+  water_flow
+  solenoid_valve
+  camera
+}
+
+enum DeviceStatus {
+  NEVER_SEEN
+  ONLINE
+  OFFLINE
+}
+
+enum Metric {
+  soil_moisture
+  temperature
+  humidity
+  rain
+  light
+  valve_state
+  brightness
+  height
+}
+
+enum Severity {
+  low
+  medium
+  high
+  critical
+}
+
+enum DiseaseStatus {
+  active
+  treated
+  resolved
+}
+
+enum IrrigationMode {
+  manual
+  scheduled
+  automatic
+  ai_recommended
+}
+
+enum IrrigationStatus {
+  on
+  off
+}
+
+enum PotIrrigationMode {
+  AUTO
+  MANUAL
+}
+
+enum DeviceCommandType {
+  PUMP_ON
+  PUMP_OFF
+}
+
+enum DeviceCommandStatus {
+  PENDING
+  SENT
+  ACKNOWLEDGED
+  FAILED
+}
+
+enum NotificationType {
+  info
+  warning
+  alert
+  system
+}
+
+enum NotificationStatus {
+  unread
+  read
+}
+
+enum TelegramDeliveryStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+}
+
+enum TelegramDeliveryEventType {
+  PUMP_ACKNOWLEDGED
+  PUMP_FAILED
+  DISEASE_ANALYSIS_COMPLETED
+  DEVICE_OFFLINE
+  DEVICE_RECOVERED
+}
+
+enum TaskType {
+  irrigation
+  fertilizer
+  pesticide
+  inspection
+}
+
+enum TaskStatus {
+  pending
+  done
+  skipped
+}
+
+// ---------------------------------------------------------------------------
+// Models
+// ---------------------------------------------------------------------------
+
+model User {
+  id               String   @id @default(cuid())
+  email            String   @unique
+  passwordHash     String
+  passwordSalt     String
+  refreshTokenHash String?
+  userName         String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  gardens          Garden[]
+  pots             Pot[]
+  plants           Plant[]
+  devices          Device[]
+  readings         Reading[]
+  diseaseReports   DiseaseReport[]
+  diseasePredictions DiseasePrediction[]
+  irrigationEvents IrrigationEvent[]
+  irrigationConfig IrrigationConfig?
+  schedules        Schedule[]
+  notifications    Notification[]
+  deviceCommands   DeviceCommand[]
+  pumpEvents       PumpEvent[]
+  telegramDeliveries TelegramDelivery[]
+}
+
+model Garden {
+  id        String         @id @default(cuid())
+  userId    String
+  name      String
+  type      GardenType     @default(outdoor)
+  location  String?
+  lat       Float?
+  lng       Float?
+  status    ResourceStatus @default(active)
+  notes     String?
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pots             Pot[]
+  plants           Plant[]
+  devices          Device[]
+  readings         Reading[]
+  irrigationEvents IrrigationEvent[]
+  deviceCommands   DeviceCommand[]
+  weatherSnapshots WeatherSnapshot[]
+  pumpEvents       PumpEvent[]
+  diseasePredictions DiseasePrediction[]
+
+  @@unique([userId, name])
+  @@index([userId, status])
+}
+
+model Pot {
+  id        String         @id @default(cuid())
+  userId    String
+  gardenId  String
+  label     String
+  sizeCm    Float?
+  soilType  SoilType       @default(loam)
+  position  String?
+  status    ResourceStatus @default(active)
+  irrigationMode      PotIrrigationMode @default(AUTO)
+  moistureOnThreshold  Float             @default(30)
+  moistureOffThreshold Float             @default(50)
+  pumpState            IrrigationStatus  @default(off)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  garden           Garden            @relation(fields: [gardenId], references: [id], onDelete: Cascade)
+  plant            Plant?
+  readings         Reading[]
+  irrigationEvents IrrigationEvent[]
+  deviceCommands   DeviceCommand[]
+  diseasePredictions DiseasePrediction[]
+  deviceMappings   DevicePotMapping[]
+  pumpEvents       PumpEvent[]
+
+  @@unique([gardenId, label])
+  @@index([userId, gardenId, status])
+}
+
+model Plant {
+  id           String       @id @default(cuid())
+  userId       String
+  gardenId     String
+  potId        String       @unique
+  commonName   String
+  scientificName String?
+  variety      String?
+  plantedAt    DateTime?
+  growthStage  GrowthStage  @default(seedling)
+  healthStatus HealthStatus @default(unknown)
+  expectedHarvestAt DateTime?
+  imageUrls    String[]     @default([])
+  notes        String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  garden         Garden          @relation(fields: [gardenId], references: [id], onDelete: Cascade)
+  pot            Pot             @relation(fields: [potId], references: [id], onDelete: Cascade)
+  threshold      PlantThreshold?
+  diseaseReports DiseaseReport[]
+  diseasePredictions DiseasePrediction[]
+  tasks          Task[]
+
+  @@index([userId, gardenId, healthStatus])
+  @@index([userId, gardenId, potId])
+}
+
+model Device {
+  id              String         @id @default(cuid())
+  userId          String
+  gardenId        String
+  hardwareId      String         @unique
+  name            String
+  type            DeviceType     @default(esp32_node)
+  apiKeyHash      String // hashed device key for ingestion auth
+  pin             String?
+  model           String?
+  firmwareVersion String?
+  status          DeviceStatus   @default(NEVER_SEEN)
+  lastSeenAt      DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  garden   Garden    @relation(fields: [gardenId], references: [id], onDelete: Cascade)
+  readings Reading[]
+  commands DeviceCommand[]
+  potMappings DevicePotMapping[]
+  pumpEvents PumpEvent[]
+
+  @@index([userId, gardenId, status])
+}
+
+model DeviceCommand {
+  id             String              @id @default(cuid())
+  userId         String
+  gardenId       String
+  deviceId       String
+  potId          String
+  command        DeviceCommandType
+  status         DeviceCommandStatus @default(PENDING)
+  mode           PotIrrigationMode
+  error          String?
+  createdAt      DateTime            @default(now())
+  sentAt         DateTime?
+  processedAt    DateTime?
+  acknowledgedAt DateTime?
+  decisionMoisture Float?
+  onThreshold      Float?
+  offThreshold     Float?
+  pumpEvents     PumpEvent[]
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  garden Garden @relation(fields: [gardenId], references: [id], onDelete: Cascade)
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  pot    Pot    @relation(fields: [potId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId, status, createdAt])
+  @@index([userId, potId, createdAt])
+}
+
+model DevicePotMapping {
+  id            String   @id @default(cuid())
+  deviceId      String
+  potId         String
+  sensorChannel String?
+  createdAt     DateTime @default(now())
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  pot    Pot    @relation(fields: [potId], references: [id], onDelete: Cascade)
+
+  @@unique([deviceId, potId])
+  @@unique([deviceId, sensorChannel])
+  @@index([potId])
+}
+
+model WeatherSnapshot {
+  id              String   @id @default(cuid())
+  gardenId        String
+  temperature     Float?
+  humidity        Float?
+  precipitation   Float?
+  rainProbability Float?
+  windSpeed       Float?
+  condition       String?
+  uvIndex         Float?
+  provider        String
+  observedAt      DateTime
+  fetchedAt       DateTime @default(now())
+
+  garden Garden @relation(fields: [gardenId], references: [id], onDelete: Cascade)
+
+  @@index([gardenId, observedAt])
+}
+
+model PumpEvent {
+  id            String              @id @default(cuid())
+  userId        String
+  gardenId      String
+  potId         String
+  deviceId      String
+  commandId     String?
+  previousState IrrigationStatus
+  newState      IrrigationStatus
+  source        PotIrrigationMode
+  status        DeviceCommandStatus
+  failureReason String?
+  occurredAt    DateTime            @default(now())
+
+  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  garden  Garden         @relation(fields: [gardenId], references: [id], onDelete: Cascade)
+  pot     Pot            @relation(fields: [potId], references: [id], onDelete: Cascade)
+  device  Device         @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  command DeviceCommand? @relation(fields: [commandId], references: [id], onDelete: SetNull)
+
+  @@index([userId, potId, occurredAt])
+  @@index([gardenId, occurredAt])
+}
+
+model Reading {
+  id         String   @id @default(cuid())
+  userId     String
+  gardenId   String
+  potId      String?
+  deviceId   String
+  hardwareId String
+  metric     Metric
+  value      Float
+  unit       String?
+  quality    String?
+  recordedAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  garden Garden @relation(fields: [gardenId], references: [id], onDelete: Cascade)
+  pot    Pot?   @relation(fields: [potId], references: [id], onDelete: SetNull)
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId, metric, recordedAt])
+  @@index([gardenId, recordedAt])
+  @@index([userId, metric, recordedAt])
+}
+
+model DiseaseReport {
+  id                      String        @id @default(cuid())
+  userId                  String
+  plantId                 String?
+  cropName                String?
+  diseaseName             String
+  className               String?
+  confidence              Float         @default(0)
+  severity                Severity      @default(low)
+  symptoms                String[]      @default([])
+  treatmentImmediate      String[]      @default([])
+  treatmentOrganic        String[]      @default([])
+  treatmentChemical       String[]      @default([])
+  treatmentPrevention     String[]      @default([])
+  recommendation          String?
+  imageUrls               String[]      @default([])
+  healthScoreContribution Float         @default(100)
+  status                  DiseaseStatus @default(active)
+  detectedAt              DateTime      @default(now())
+  resolvedAt              DateTime?
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plant Plant? @relation(fields: [plantId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status, detectedAt])
+  @@index([plantId, detectedAt])
+}
+
+// Immutable AI prediction history. The hierarchy is stored explicitly so a
+// prediction can always be queried by its garden, pot, or plant.
+model DiseasePrediction {
+  id               String   @id @default(cuid())
+  userId           String
+  gardenId         String
+  potId            String
+  plantId          String
+  imageRef         String
+  imageMimeType    String
+  predictedDisease String
+  className        String?
+  confidence       Float
+  createdAt        DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  garden Garden @relation(fields: [gardenId], references: [id], onDelete: Cascade)
+  pot    Pot    @relation(fields: [potId], references: [id], onDelete: Cascade)
+  plant  Plant  @relation(fields: [plantId], references: [id], onDelete: Cascade)
+
+  @@index([userId, plantId, createdAt])
+  @@index([userId, gardenId, potId, createdAt])
+}
+
+model IrrigationEvent {
+  id              String           @id @default(cuid())
+  userId          String
+  gardenId        String?
+  potId           String?
+  mode            IrrigationMode   @default(automatic)
+  status          IrrigationStatus
+  manualOverride  Boolean          @default(false)
+  amountMl        Float?
+  durationSeconds Int?
+  reason          String?
+  soilMoisture    Float?
+  onThreshold     Float?
+  offThreshold    Float?
+  decision        String?
+  outcome         String?
+  startedAt       DateTime         @default(now())
+  endedAt         DateTime?
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  garden Garden? @relation(fields: [gardenId], references: [id], onDelete: SetNull)
+  pot    Pot?    @relation(fields: [potId], references: [id], onDelete: SetNull)
+
+  @@index([userId, startedAt])
+  @@index([gardenId, startedAt])
+}
+
+// Replaces the embedded user.irrigation object from the legacy model.
+model IrrigationConfig {
+  id              String           @id @default(cuid())
+  userId          String           @unique
+  thresholdPercent Float           @default(30)
+  manualOverride  Boolean          @default(false)
+  currentStatus   IrrigationStatus @default(off)
+  updatedAt       DateTime         @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Per-plant ideal ranges (from SmartGarden concept) — drives recommendations + auto-irrigation.
+model PlantThreshold {
+  id              String @id @default(cuid())
+  plantId         String @unique
+  tempDayMin      Float?
+  tempDayMax      Float?
+  tempNightMin    Float?
+  tempNightMax    Float?
+  humidityMin     Float?
+  humidityMax     Float?
+  lightMin        Float?
+  lightMax        Float?
+  soilMoistureMin Float? @default(30)
+  soilMoistureMax Float? @default(70)
+
+  plant Plant @relation(fields: [plantId], references: [id], onDelete: Cascade)
+}
+
+model Schedule {
+  id              String   @id @default(cuid())
+  userId          String
+  gardenId        String?
+  potId           String?
+  startTime       String // "HH:MM"
+  durationMinutes Int      @default(15)
+  days            String[] @default([])
+  enabled         Boolean  @default(true)
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Notification {
+  id        String             @id @default(cuid())
+  userId    String
+  gardenId  String?
+  potId     String?
+  plantId   String?
+  type      NotificationType   @default(info)
+  severity  Severity           @default(low)
+  title     String
+  message   String
+  status    NotificationStatus @default(unread)
+  actionUrl String?
+  readAt    DateTime?
+  createdAt DateTime           @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status, createdAt])
+}
+
+// Durable server-side outbox and delivery history. This is intentionally
+// separate from Notification, which is the in-app read/unread feed.
+model TelegramDelivery {
+  id                String                    @id @default(cuid())
+  userId            String
+  eventKey          String                    @unique
+  eventType         TelegramDeliveryEventType
+  eventRef          String
+  channel           String                    @default("telegram")
+  // A non-secret configuration label only. The configured chat ID is never persisted.
+  destinationRef    String                    @default("configured-default")
+  messageText       String
+  status            TelegramDeliveryStatus   @default(PENDING)
+  attemptCount      Int                       @default(0)
+  nextAttemptAt     DateTime                  @default(now())
+  lastErrorCode     String?
+  providerMessageId String?
+  lastAttemptAt     DateTime?
+  leaseExpiresAt    DateTime?
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+  sentAt            DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextAttemptAt])
+  @@index([status, leaseExpiresAt])
+  @@index([userId, createdAt])
+}
+
+model Task {
+  id      String     @id @default(cuid())
+  plantId String
+  type    TaskType
+  dueAt   DateTime?
+  status  TaskStatus @default(pending)
+  notes   String?
+  createdAt DateTime @default(now())
+
+  plant Plant @relation(fields: [plantId], references: [id], onDelete: Cascade)
+
+  @@index([plantId, status])
+}

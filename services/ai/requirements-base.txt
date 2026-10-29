@@ -1,0 +1,8 @@
+# Base deps to run the FastAPI service WITHOUT TensorFlow (mock fallback).
+# Works on any Python 3.10+. Install requirements.txt as well (Python 3.10–3.12)
+# to load the real trained model.
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+python-multipart==0.0.20
+pillow==11.0.0
+numpy

@@ -1,0 +1,7 @@
+CREATE TYPE "PotIrrigationMode" AS ENUM ('AUTO', 'MANUAL');
+
+ALTER TABLE "Pot"
+ADD COLUMN "irrigationMode" "PotIrrigationMode" NOT NULL DEFAULT 'AUTO',
+ADD COLUMN "moistureOnThreshold" DOUBLE PRECISION NOT NULL DEFAULT 30,
+ADD COLUMN "moistureOffThreshold" DOUBLE PRECISION NOT NULL DEFAULT 50,
+ADD COLUMN "pumpState" "IrrigationStatus" NOT NULL DEFAULT 'off';
