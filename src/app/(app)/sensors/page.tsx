@@ -15,13 +15,14 @@ interface Device {
   name: string;
   hardwareId: string;
   type: string;
-  status: "NEVER_SEEN" | "ONLINE" | "OFFLINE";
+  status: "NEVER_SEEN" | "ONLINE" | "STALE" | "OFFLINE";
   lastSeenAt: string | null;
   garden: { name: string };
 }
 
 const statusTone: Record<Device["status"], "emerald" | "amber" | "slate"> = {
   ONLINE: "emerald",
+  STALE: "amber",
   OFFLINE: "amber",
   NEVER_SEEN: "slate",
 };
@@ -134,7 +135,7 @@ export default function SensorsPage() {
               <Badge tone={statusTone[d.status]}>{d.status}</Badge>
               {d.lastSeenAt ? (
                 <Badge tone="slate">
-                  seen {new Date(d.lastSeenAt).toLocaleTimeString()}
+                  seen {new Intl.DateTimeFormat("en-BD", { timeStyle: "medium", timeZone: "Asia/Dhaka" }).format(new Date(d.lastSeenAt))}
                 </Badge>
               ) : null}
             </div>

@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { authenticateDevice } from "@/lib/device-auth";
 import { acknowledgePumpCommand, claimDeviceCommands } from "@/lib/device-commands";
-import { prisma } from "@/lib/db";
 
 export const runtime = "nodejs";
 
@@ -23,9 +22,6 @@ export async function GET(req: Request) {
   }
 
   const commands = await claimDeviceCommands(device.id);
-  // A completed authenticated poll is successful device/server communication,
-  // even when telemetry is temporarily unchanged.
-  await prisma.device.update({ where: { id: device.id }, data: { lastSeenAt: new Date(), status: "ONLINE" } });
 
   return NextResponse.json({
     success: true,
@@ -59,7 +55,6 @@ export async function POST(req: Request) {
       success: parsed.data.success,
       error: parsed.data.error,
     });
-    await prisma.device.update({ where: { id: device.id }, data: { lastSeenAt: new Date(), status: "ONLINE" } });
     return NextResponse.json({ success: true, command: result.command });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Command not found";

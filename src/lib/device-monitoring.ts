@@ -3,19 +3,16 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { formatDeviceOfflineNotification, formatDeviceRecoveredNotification } from "@/lib/business-notifications";
 import { enqueueTelegramDelivery } from "@/lib/telegram-delivery-enqueue";
+import { getDeviceConnectionThresholds } from "@/lib/device-status";
 
 // This is also the server-side observation of the relay fail-safe window.
-export const DEFAULT_DEVICE_OFFLINE_THRESHOLD_SECONDS = 60;
+export { DEFAULT_DEVICE_OFFLINE_THRESHOLD_SECONDS } from "@/lib/device-status";
 export const DEFAULT_OFFLINE_MONITOR_BATCH_SIZE = 25;
 
 type MonitoringStore = Pick<typeof prisma, "device" | "$transaction">;
 
 export function getDeviceOfflineThresholdMs(env: Record<string, string | undefined> = process.env) {
-  const configured = Number(env.DEVICE_OFFLINE_THRESHOLD_SECONDS);
-  const seconds = Number.isFinite(configured) && configured >= 60
-    ? configured
-    : DEFAULT_DEVICE_OFFLINE_THRESHOLD_SECONDS;
-  return Math.floor(seconds * 1_000);
+  return getDeviceConnectionThresholds(env).offlineMs;
 }
 
 export function deviceOfflineEventKey(deviceId: string, lastSeenAt: Date) {

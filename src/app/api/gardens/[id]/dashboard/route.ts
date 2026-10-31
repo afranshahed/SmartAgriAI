@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { buildGardenAlerts } from "@/lib/garden-alerts";
 import { getGardenWeather, type WeatherResult } from "@/lib/weather";
 import { persistGardenWeatherSnapshot } from "@/lib/weather-history";
+import { getDeviceConnectionStatus } from "@/lib/device-status";
 
 const HISTORY_POINTS_PER_POT = 30;
 const AUTO_DECISION_REASONS = [
@@ -57,9 +58,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const irrigationDecision = decisionHistory.find((event) => event.potId === pot.id) ?? null;
     return { id: pot.id, label: pot.label, irrigationMode: pot.irrigationMode, pumpState: pot.pumpState, moistureOnThreshold: pot.moistureOnThreshold, plant: pot.plant, currentMoisture: moistureHistory.at(-1)?.value ?? null, moistureHistory, irrigationDecision };
   });
-  const alerts = buildGardenAlerts({ gardenId: garden.id, pots: pots.map((pot) => ({ id: pot.id, label: pot.label, plant: pot.plant, moisture: pot.currentMoisture, moistureOnThreshold: pot.moistureOnThreshold })), devices: garden.devices, weather, latestPredictions, failedCommands });
+  const now = new Date();
+  const devices = garden.devices.map((device) => ({ ...device, status: getDeviceConnectionStatus(device.lastSeenAt, now) }));
+  const alerts = buildGardenAlerts({ gardenId: garden.id, pots: pots.map((pot) => ({ id: pot.id, label: pot.label, plant: pot.plant, moisture: pot.currentMoisture, moistureOnThreshold: pot.moistureOnThreshold })), devices, weather, latestPredictions, failedCommands });
   return NextResponse.json({
     garden: { id: garden.id, name: garden.name, location: garden.location, lat: garden.lat, lng: garden.lng, type: garden.type },
-    weather, weatherUnavailable, devices: garden.devices, pots, pumpHistory, diseaseHistory: predictions, alerts,
+    weather, weatherUnavailable, devices, pots, pumpHistory, diseaseHistory: predictions, alerts,
   });
 }

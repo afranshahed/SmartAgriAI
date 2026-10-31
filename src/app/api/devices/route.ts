@@ -7,6 +7,7 @@ import { z } from "zod";
 import { requireUser } from "@/lib/api-auth";
 import { prisma } from "@/lib/db";
 import { generateDeviceKey } from "@/lib/device-key";
+import { getDeviceConnectionStatus } from "@/lib/device-status";
 
 export async function GET(req: Request) {
   const gate = await requireUser();
@@ -23,7 +24,11 @@ export async function GET(req: Request) {
     // Never expose apiKeyHash.
     omit: { apiKeyHash: true },
   });
-  return NextResponse.json(devices);
+  const now = new Date();
+  return NextResponse.json(devices.map((device) => ({
+    ...device,
+    status: getDeviceConnectionStatus(device.lastSeenAt, now),
+  })));
 }
 
 const schema = z.object({

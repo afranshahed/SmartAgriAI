@@ -9,6 +9,7 @@ import {
   queuePumpCommand,
 } from "@/lib/device-commands";
 import { prisma } from "@/lib/db";
+import { getDeviceConnectionStatus } from "@/lib/device-status";
 
 const schema = z
   .object({
@@ -22,8 +23,6 @@ const schema = z
       (!value.pumpState || !value.command || pumpStateToCommand(value.pumpState) === value.command),
     { message: "Provide one pump command, or matching command and pumpState values" },
   );
-
-const ONLINE_WINDOW_MS = 10 * 60 * 1000;
 
 export async function POST(
   req: Request,
@@ -79,10 +78,7 @@ export async function POST(
   const command =
     parsed.data.command ?? pumpStateToCommand(parsed.data.pumpState ?? "off");
 
-  const isOnline =
-    device.status === "ONLINE" &&
-    device.lastSeenAt != null &&
-    Date.now() - device.lastSeenAt.getTime() <= ONLINE_WINDOW_MS;
+  const isOnline = getDeviceConnectionStatus(device.lastSeenAt) === "ONLINE";
   if (!isOnline && command === "PUMP_ON") {
     return NextResponse.json(
       { error: "The garden ESP32 is offline; the pump command was not queued." },
