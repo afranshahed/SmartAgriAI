@@ -2,7 +2,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { authenticateDevice } from "@/lib/device-auth";
-import { acknowledgePumpCommand } from "@/lib/device-commands";
+import { acknowledgePumpCommand, claimDeviceCommands } from "@/lib/device-commands";
 import { prisma } from "@/lib/db";
 
 export const runtime = "nodejs";
@@ -11,6 +11,7 @@ const ackSchema = z.object({
   deviceId: z.string().min(1).optional(),
   hardwareId: z.string().min(1).optional(),
   commandId: z.string().min(1),
+  kind: z.enum(["delivery", "execution"]).default("execution"),
   success: z.boolean().default(true),
   error: z.string().optional(),
 });
@@ -21,34 +22,14 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Invalid device or key" }, { status: 401 });
   }
 
-  const commands = await prisma.deviceCommand.findMany({
-    where: {
-      deviceId: device.id,
-      status: "PENDING",
-    },
-    orderBy: { createdAt: "asc" },
-    take: 20,
-    select: {
-      id: true,
-      deviceId: true,
-      potId: true,
-      command: true,
-      status: true,
-      mode: true,
-      createdAt: true,
-    },
-  });
-
-  if (commands.length > 0) {
-    await prisma.deviceCommand.updateMany({
-      where: { id: { in: commands.map((command) => command.id) } },
-      data: { status: "SENT", sentAt: new Date() },
-    });
-  }
+  const commands = await claimDeviceCommands(device.id);
+  // A completed authenticated poll is successful device/server communication,
+  // even when telemetry is temporarily unchanged.
+  await prisma.device.update({ where: { id: device.id }, data: { lastSeenAt: new Date(), status: "ONLINE" } });
 
   return NextResponse.json({
     success: true,
-    commands: commands.map((command) => ({ ...command, status: "SENT" })),
+    commands: commands.map((command) => ({ id: command.id, deviceId: command.deviceId, potId: command.potId, command: command.command, mode: command.mode, sequence: command.sequence, expiresAt: command.expiresAt, status: "SENT" })),
   });
 }
 
@@ -74,9 +55,11 @@ export async function POST(req: Request) {
     const result = await acknowledgePumpCommand({
       commandId: parsed.data.commandId,
       deviceId: device.id,
+      kind: parsed.data.kind,
       success: parsed.data.success,
       error: parsed.data.error,
     });
+    await prisma.device.update({ where: { id: device.id }, data: { lastSeenAt: new Date(), status: "ONLINE" } });
     return NextResponse.json({ success: true, command: result.command });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Command not found";

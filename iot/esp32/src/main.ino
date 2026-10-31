@@ -10,6 +10,7 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
+#include <Preferences.h>
 #include "secrets.h"
 
 const int SOIL_PIN = 36;   // GPIO36 / VP (ADC1); safe to use while Wi-Fi is active.
@@ -17,10 +18,29 @@ const int RELAY_PIN = 5;
 
 const unsigned long TELEMETRY_INTERVAL_MS = 5000;
 const unsigned long COMMAND_POLL_INTERVAL_MS = 2000;
+#ifndef COMMUNICATION_LOSS_FAILSAFE_MS
+#define COMMUNICATION_LOSS_FAILSAFE_MS 60000UL
+#endif
 
 bool pumpIsOn = false;
 unsigned long lastTelemetryAt = 0;
 unsigned long lastCommandPollAt = 0;
+unsigned long lastServerCommunicationAt = 0;
+Preferences commandStore;
+
+int savedCommandSlot(const char *commandId) {
+  for (int slot = 0; slot < 8; slot++) {
+    if (commandStore.getString((String("id") + slot).c_str()) == commandId) return slot;
+  }
+  return -1;
+}
+
+void saveCommandResult(const char *commandId, bool success) {
+  int slot = commandStore.getUInt("nextSlot", 0) % 8;
+  commandStore.putString((String("id") + slot).c_str(), commandId);
+  commandStore.putBool((String("ok") + slot).c_str(), success);
+  commandStore.putUInt("nextSlot", (slot + 1) % 8);
+}
 
 void connectWiFi() {
   WiFi.mode(WIFI_STA);
@@ -50,7 +70,7 @@ int readMoisturePercent() {
   return constrain(percentage, 0, 100);
 }
 
-void acknowledgeCommand(const char *commandId, bool success, const char *error = nullptr) {
+void acknowledgeCommand(const char *commandId, const char *kind, bool success = true, const char *error = nullptr) {
   HTTPClient http;
   http.setTimeout(HTTP_TIMEOUT_MS);
   http.begin(COMMANDS_URL);
@@ -60,13 +80,16 @@ void acknowledgeCommand(const char *commandId, bool success, const char *error =
   StaticJsonDocument<256> body;
   body["hardwareId"] = HARDWARE_ID;
   body["commandId"] = commandId;
+  body["kind"] = kind;
   body["success"] = success;
   if (error != nullptr) body["error"] = error;
 
   String payload;
   serializeJson(body, payload);
   int code = http.POST(payload);
-  if (code < 200 || code >= 300) {
+  if (code >= 200 && code < 300) {
+    lastServerCommunicationAt = millis();
+  } else {
     Serial.printf("Command acknowledgement failed: %d\n", code);
   }
   http.end();
@@ -85,6 +108,7 @@ void processPendingCommands() {
     http.end();
     return;
   }
+  lastServerCommunicationAt = millis();
 
   DynamicJsonDocument response(2048);
   DeserializationError parseError = deserializeJson(response, http.getString());
@@ -98,23 +122,41 @@ void processPendingCommands() {
     const char *commandId = command["id"] | "";
     const char *type = command["command"] | "";
     const char *targetPotId = command["potId"] | "";
+    long sequence = command["sequence"] | 0;
     if (!commandId[0]) continue;
+    acknowledgeCommand(commandId, "delivery");
+
+    int previousSlot = savedCommandSlot(commandId);
+    if (previousSlot >= 0) {
+      bool priorSuccess = commandStore.getBool((String("ok") + previousSlot).c_str(), false);
+      acknowledgeCommand(commandId, "execution", priorSuccess, priorSuccess ? nullptr : "Previously rejected command");
+      continue;
+    }
 
     if (String(targetPotId) != POT_ID) {
       // Commands are marked SENT by the server once polled. Explicitly fail a
       // command for another pot rather than leaving it permanently in-flight.
       Serial.printf("Command %s targets unmapped pot\n", commandId);
-      acknowledgeCommand(commandId, false, "Unmapped pot");
+      saveCommandResult(commandId, false);
+      acknowledgeCommand(commandId, "execution", false, "Unmapped pot");
+    } else if (sequence <= commandStore.getLong("highestSeq", 0)) {
+      saveCommandResult(commandId, false);
+      acknowledgeCommand(commandId, "execution", false, "Stale command sequence");
     } else if (String(type) == "PUMP_ON") {
       // This is intentionally continuous: the backend issues PUMP_OFF when it
       // wants watering to stop. Do not replace this with a timed delay.
       setPump(true);
-      acknowledgeCommand(commandId, true);
+      commandStore.putLong("highestSeq", sequence);
+      saveCommandResult(commandId, true);
+      acknowledgeCommand(commandId, "execution", true);
     } else if (String(type) == "PUMP_OFF") {
       setPump(false);
-      acknowledgeCommand(commandId, true);
+      commandStore.putLong("highestSeq", sequence);
+      saveCommandResult(commandId, true);
+      acknowledgeCommand(commandId, "execution", true);
     } else {
-      acknowledgeCommand(commandId, false, "Unsupported command");
+      saveCommandResult(commandId, false);
+      acknowledgeCommand(commandId, "execution", false, "Unsupported command");
     }
   }
 }
@@ -141,6 +183,7 @@ void sendTelemetry() {
   http.addHeader("x-device-key", DEVICE_KEY);
   int code = http.POST(body);
   if (code >= 200 && code < 300) {
+    lastServerCommunicationAt = millis();
     Serial.printf("Sent moisture=%d%% pump=%s\n", moisture, pumpIsOn ? "ON" : "OFF");
   } else {
     Serial.printf("Telemetry POST failed: %d\n", code);
@@ -155,13 +198,19 @@ void setup() {
   digitalWrite(RELAY_PIN, RELAY_OFF_LEVEL);
   pinMode(RELAY_PIN, OUTPUT);
   setPump(false); // Always establish the configured OFF state before Wi-Fi.
+  commandStore.begin("pumpcmd", false);
   connectWiFi();
+  lastServerCommunicationAt = millis();
 }
 
 void loop() {
   if (WiFi.status() != WL_CONNECTED) connectWiFi();
 
   const unsigned long now = millis();
+  if (now - lastServerCommunicationAt >= COMMUNICATION_LOSS_FAILSAFE_MS && pumpIsOn) {
+    setPump(false);
+    Serial.println("Communication-loss fail-safe switched pump OFF");
+  }
   if (now - lastTelemetryAt >= TELEMETRY_INTERVAL_MS) {
     lastTelemetryAt = now;
     sendTelemetry();

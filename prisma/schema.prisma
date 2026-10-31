@@ -121,7 +121,10 @@ enum DeviceCommandStatus {
   PENDING
   SENT
   ACKNOWLEDGED
+  RETRYING
+  EXPIRED
   FAILED
+  CANCELLED
 }
 
 enum NotificationType {
@@ -235,6 +238,8 @@ model Pot {
   moistureOnThreshold  Float             @default(30)
   moistureOffThreshold Float             @default(50)
   pumpState            IrrigationStatus  @default(off)
+  commandSequence      Int               @default(0)
+  confirmedCommandSequence Int            @default(0)
   createdAt DateTime       @default(now())
   updatedAt DateTime       @updatedAt
 
@@ -321,6 +326,13 @@ model DeviceCommand {
   sentAt         DateTime?
   processedAt    DateTime?
   acknowledgedAt DateTime?
+  deliveryAcknowledgedAt DateTime?
+  executionResultAt DateTime?
+  attemptCount   Int                 @default(0)
+  lastAttemptAt  DateTime?
+  nextAttemptAt  DateTime            @default(now())
+  expiresAt      DateTime
+  sequence       Int                 @default(0)
   decisionMoisture Float?
   onThreshold      Float?
   offThreshold     Float?

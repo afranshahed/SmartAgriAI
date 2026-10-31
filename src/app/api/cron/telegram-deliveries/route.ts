@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { runTelegramDeliveryWorker } from "@/lib/telegram-outbox";
+import { runTelegramDeliveryWorkerUntilIdle } from "@/lib/telegram-outbox";
 import { runDeviceOfflineMonitor } from "@/lib/device-monitoring";
 
 export const runtime = "nodejs";
@@ -11,6 +11,6 @@ export async function GET(request: Request) {
   }
 
   const offline = await runDeviceOfflineMonitor();
-  const deliveries = await runTelegramDeliveryWorker();
+  const deliveries = await runTelegramDeliveryWorkerUntilIdle();
   return NextResponse.json({ success: true, offline, deliveries });
 }

@@ -79,6 +79,7 @@ the service serves a realistic mock so the full pipeline still works.
 | `npm run db:migrate` | Apply Prisma migrations |
 | `npm run db:seed` | Seed demo data |
 | `npm run db:studio` | Prisma Studio (DB admin UI) |
+| `npm run telegram:worker` | One-shot, bounded Telegram outbox worker (safe for existing due `PENDING` rows) |
 | `npm run simulate` | Run the ESP32 sensor simulator |
 
 ## Verifying the features

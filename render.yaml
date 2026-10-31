@@ -1,0 +1,17 @@
+# Attach the existing SmartAgriAI web service and this cron service to the same
+# Render environment group (or configure the listed variables on both).
+# Secrets are deliberately not stored in this file.
+services:
+  - type: cron
+    name: smartagriai-telegram-delivery
+    runtime: node
+    schedule: "*/5 * * * *"
+    buildCommand: npm ci
+    startCommand: npm run telegram:worker
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false

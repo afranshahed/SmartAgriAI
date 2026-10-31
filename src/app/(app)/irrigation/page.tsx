@@ -17,8 +17,11 @@ interface Pot {
   currentMoisture: number | null;
   moistureRecordedAt: string | null;
   latestCommand: {
-    status: "PENDING" | "SENT" | "ACKNOWLEDGED" | "FAILED";
+    command: "PUMP_ON" | "PUMP_OFF";
+    status: "PENDING" | "SENT" | "RETRYING" | "ACKNOWLEDGED" | "FAILED" | "EXPIRED" | "CANCELLED";
     error: string | null;
+    deliveryAcknowledgedAt: string | null;
+    executionResultAt: string | null;
   } | null;
 }
 interface LogRow {
@@ -153,7 +156,7 @@ export default function IrrigationPage() {
                   <Droplets size={28} />
                 </span>
                 <div>
-                  <p className="text-2xl font-black">Pump {selectedPot.pumpState.toUpperCase()}</p>
+                  <p className="text-2xl font-black">Confirmed pump {selectedPot.pumpState.toUpperCase()}</p>
                   <Badge tone={selectedPot.irrigationMode === "MANUAL" ? "amber" : "emerald"}>
                     {selectedPot.irrigationMode === "MANUAL" ? "Manual" : "Automatic"}
                   </Badge>
@@ -193,7 +196,7 @@ export default function IrrigationPage() {
               </div>
               {selectedPot.irrigationMode === "AUTO" ? <p className="mt-3 text-xs text-slate-500">Switch to Manual to send an on or off command.</p> : null}
               {selectedPot.latestCommand?.status === "FAILED" ? <p className="mt-3 text-sm font-bold text-rose-600">Device command failed: {selectedPot.latestCommand.error ?? "The device did not apply the pump command."}</p> : null}
-              {selectedPot.latestCommand && ["PENDING", "SENT"].includes(selectedPot.latestCommand.status) ? <p className="mt-3 text-xs text-sky-700 dark:text-sky-300">Pump command is awaiting device acknowledgement; displayed pump state remains confirmed.</p> : null}
+              {selectedPot.latestCommand && ["PENDING", "SENT", "RETRYING"].includes(selectedPot.latestCommand.status) ? <p className="mt-3 text-xs text-sky-700 dark:text-sky-300">Requested {selectedPot.latestCommand.command === "PUMP_ON" ? "ON" : "OFF"} · {selectedPot.latestCommand.deliveryAcknowledgedAt ? "delivered; awaiting execution result" : selectedPot.latestCommand.status === "RETRYING" ? "retry scheduled" : "awaiting delivery"}. Confirmed state remains above.</p> : null}
             </Card>
 
             <Card>

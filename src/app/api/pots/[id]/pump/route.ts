@@ -83,7 +83,7 @@ export async function POST(
     device.status === "ONLINE" &&
     device.lastSeenAt != null &&
     Date.now() - device.lastSeenAt.getTime() <= ONLINE_WINDOW_MS;
-  if (!isOnline) {
+  if (!isOnline && command === "PUMP_ON") {
     return NextResponse.json(
       { error: "The garden ESP32 is offline; the pump command was not queued." },
       { status: 409 },
@@ -95,7 +95,10 @@ export async function POST(
     orderBy: { createdAt: "desc" },
     select: { command: true },
   });
-  if (commandToPumpState(command) === pot.pumpState &&
+  // An offline MANUAL OFF is deliberately queued even if the last server-side
+  // confirmation was already OFF: the physical relay may have changed while
+  // communication was lost, and OFF is the safety command.
+  if ((command === "PUMP_ON" || isOnline) && commandToPumpState(command) === pot.pumpState &&
     (!outstanding || outstanding.command === command)) {
     return NextResponse.json({
       accepted: false,
@@ -117,7 +120,9 @@ export async function POST(
     accepted: !queued.blocked,
     command: queued.command,
     queued: queued.created,
-    message: queued.blocked
+      message: !isOnline && command === "PUMP_OFF"
+      ? "Pump OFF command queued for safe delivery when the device reconnects; the displayed state remains the last confirmed state."
+      : queued.blocked
       ? "The previous pump command is awaiting device acknowledgement; no conflicting command was queued."
       : queued.created
       ? "Pump command queued; pump state changes only after device acknowledgement."

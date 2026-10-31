@@ -1,0 +1,22 @@
+# Local development and generated Python files
+.venv/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# Credentials and editor/OS files
+.env
+.env.*
+*.pem
+.DS_Store
+
+# Training and evaluation assets are not needed by the inference service.
+train.py
+models/inference.py
+models/README.md
+models/gitattributes
+evaluation_*.png
+evaluation_*.csv
+evaluation_*.md

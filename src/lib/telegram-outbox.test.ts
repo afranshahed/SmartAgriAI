@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { TelegramDelivery } from "@prisma/client";
-import { calculateRetryDelayMs, claimDueTelegramDeliveries, enqueueTelegramDelivery, processTelegramDelivery } from "./telegram-outbox";
+import { calculateRetryDelayMs, claimDueTelegramDeliveries, enqueueTelegramDelivery, processTelegramDelivery, runTelegramDeliveryWorkerUntilIdle } from "./telegram-outbox";
 
 const now = new Date("2026-10-28T06:00:00.000Z");
 
@@ -90,4 +90,35 @@ test("a stale PROCESSING lease is eligible for recovery", async () => {
   const claimed = await claimDueTelegramDeliveries(store as never, { now, limit: 1 });
   assert.equal(updated, true);
   assert.equal(claimed.length, 1);
+});
+
+test("bounded worker drain claims existing pending rows, increments attempts, and sends each once", async () => {
+  let rows = [
+    delivery({ id: "delivery-1", status: "PENDING", attemptCount: 0, leaseExpiresAt: null }),
+    delivery({ id: "delivery-2", eventKey: "disease:report-1", status: "PENDING", attemptCount: 0, leaseExpiresAt: null }),
+  ];
+  const store = { telegramDelivery: {
+    findMany: async () => rows.filter((row) => row.status === "PENDING"),
+    findUnique: async ({ where }: any) => rows.find((row) => row.id === where.id) ?? null,
+    updateMany: async ({ where, data }: any) => {
+      const index = rows.findIndex((row) => row.id === where.id && (data.status === "PROCESSING" ? row.status === "PENDING" : row.status === where.status));
+      if (index < 0) return { count: 0 };
+      const row = rows[index];
+      rows[index] = {
+        ...row,
+        ...data,
+        attemptCount: data.attemptCount?.increment ? row.attemptCount + data.attemptCount.increment : row.attemptCount,
+      };
+      return { count: 1 };
+    },
+  } };
+
+  const result = await runTelegramDeliveryWorkerUntilIdle(
+    store as never,
+    async () => ({ ok: true, providerMessageId: "provider-message" }),
+    { now, limit: 1, maxBatches: 5 },
+  );
+
+  assert.deepEqual(result, { claimed: 2, sent: 2, retried: 0, failed: 0 });
+  assert.deepEqual(rows.map((row) => [row.status, row.attemptCount]), [["SENT", 1], ["SENT", 1]]);
 });

@@ -38,7 +38,7 @@ export async function GET(req: Request) {
       deviceCommands: {
         orderBy: { createdAt: "desc" },
         take: 1,
-        select: { id: true, command: true, status: true, error: true, createdAt: true },
+        select: { id: true, command: true, status: true, error: true, createdAt: true, deliveryAcknowledgedAt: true, executionResultAt: true, sequence: true },
       },
     },
   });

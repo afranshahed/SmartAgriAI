@@ -126,3 +126,28 @@ export async function runTelegramDeliveryWorker(
     failed: outcomes.filter((outcome) => outcome.status === "failed").length,
   };
 }
+
+/**
+ * Drains a bounded number of due batches. This is used by the short-lived
+ * Render Cron process so a backlog does not take one five-minute run per ten
+ * rows. The bound keeps a bad backlog from making a cron run unbounded.
+ */
+export async function runTelegramDeliveryWorkerUntilIdle(
+  store: DeliveryStore = prisma,
+  send: (text: string) => Promise<TelegramSendResult> = sendTelegramText,
+  options: { now?: Date; limit?: number; maxBatches?: number } = {},
+) {
+  const maxBatches = Math.max(1, Math.min(options.maxBatches ?? 10, 50));
+  const total = { claimed: 0, sent: 0, retried: 0, failed: 0 };
+
+  for (let batch = 0; batch < maxBatches; batch += 1) {
+    const result = await runTelegramDeliveryWorker(store, send, { now: options.now, limit: options.limit });
+    total.claimed += result.claimed;
+    total.sent += result.sent;
+    total.retried += result.retried;
+    total.failed += result.failed;
+    if (result.claimed === 0) break;
+  }
+
+  return total;
+}

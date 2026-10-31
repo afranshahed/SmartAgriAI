@@ -12,11 +12,12 @@
     "test:weather": "tsx --test tests/weather.test.ts",
     "test:disease": "tsx --test src/lib/disease-images.test.ts src/app/api/disease-detection/analyze/route.test.ts src/app/api/disease-detection/reports/route.test.ts",
     "test:dashboard": "tsx --test src/lib/garden-alerts.test.ts tests/garden-dashboard-api.test.ts src/app/api/gardens/overview/route.test.ts",
-    "test:telegram": "tsx --conditions=react-server --test src/lib/telegram.test.ts src/lib/business-notifications.test.ts src/lib/telegram-outbox.test.ts src/lib/device-monitoring.test.ts src/lib/telegram-preferences.test.ts src/app/api/cron/telegram-deliveries/route.test.ts src/app/api/telegram/deliveries/route.test.ts && tsx --test src/app/api/telegram/test/route.test.ts",
+    "test:telegram": "tsx --conditions=react-server --test src/lib/telegram.test.ts src/lib/business-notifications.test.ts src/lib/telegram-outbox.test.ts src/lib/device-monitoring.test.ts src/lib/telegram-preferences.test.ts src/lib/device-command-settings.test.ts src/app/api/cron/telegram-deliveries/route.test.ts src/app/api/telegram/deliveries/route.test.ts && tsx --test src/app/api/telegram/test/route.test.ts",
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
+    "telegram:worker": "tsx --conditions=react-server scripts/telegram-delivery-worker.ts",
     "simulate": "node simulator.js"
   },
   "prisma": {

@@ -4,7 +4,8 @@ import { prisma } from "@/lib/db";
 import { formatDeviceOfflineNotification, formatDeviceRecoveredNotification } from "@/lib/business-notifications";
 import { enqueueTelegramDelivery } from "@/lib/telegram-delivery-enqueue";
 
-export const DEFAULT_DEVICE_OFFLINE_THRESHOLD_SECONDS = 900;
+// This is also the server-side observation of the relay fail-safe window.
+export const DEFAULT_DEVICE_OFFLINE_THRESHOLD_SECONDS = 60;
 export const DEFAULT_OFFLINE_MONITOR_BATCH_SIZE = 25;
 
 type MonitoringStore = Pick<typeof prisma, "device" | "$transaction">;

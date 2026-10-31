@@ -44,6 +44,10 @@ const potStates = Object.fromEntries(
     pump: false,
   }]),
 );
+const highestSequence = Object.fromEntries(POT_IDS.map((potId) => [potId, 0]));
+const commandResults = new Map();
+let lastServerCommunicationAt = Date.now();
+const FAILSAFE_MS = Number(process.env.DEVICE_COMMUNICATION_LOSS_FAILSAFE_SECONDS || 60) * 1000;
 
 let temperature = 28.5;
 let humidity = 65;
@@ -102,7 +106,7 @@ async function fetchCommands() {
   return data.commands || [];
 }
 
-async function acknowledgeCommand(commandId, success = true, error) {
+async function acknowledgeCommand(commandId, kind, success = true, error) {
   const res = await fetch(`${BACKEND_URL}/api/iot/commands`, {
     method: "POST",
     headers: {
@@ -112,6 +116,7 @@ async function acknowledgeCommand(commandId, success = true, error) {
     body: JSON.stringify({
       deviceId: DEVICE_ID,
       commandId,
+      kind,
       success,
       error,
     }),
@@ -135,16 +140,34 @@ async function acknowledgeCommand(commandId, success = true, error) {
 async function processCommands() {
   try {
     const commands = await fetchCommands();
+    lastServerCommunicationAt = Date.now();
     for (const command of commands) {
+      await acknowledgeCommand(command.id, "delivery");
+      const previous = commandResults.get(command.id);
+      if (previous) {
+        await acknowledgeCommand(command.id, "execution", previous.success, previous.error);
+        continue;
+      }
       const state = potStates[command.potId];
       if (!state) {
-        await acknowledgeCommand(command.id, false, `Unknown pot ${command.potId}`);
+        const result = { success: false, error: `Unknown pot ${command.potId}` };
+        commandResults.set(command.id, result);
+        await acknowledgeCommand(command.id, "execution", result.success, result.error);
         console.warn(`[COMMAND FAILED] pot=${command.potId} command=${command.id}: unmapped pot`);
         continue;
       }
 
+      if (command.sequence <= highestSequence[command.potId]) {
+        const result = { success: false, error: "Stale command sequence" };
+        commandResults.set(command.id, result);
+        await acknowledgeCommand(command.id, "execution", result.success, result.error);
+        continue;
+      }
       state.pump = command.command === "PUMP_ON";
-      const result = await acknowledgeCommand(command.id, true);
+      highestSequence[command.potId] = command.sequence;
+      const applied = { success: true };
+      commandResults.set(command.id, applied);
+      const result = await acknowledgeCommand(command.id, "execution", true);
       console.log(
         `[COMMAND ACK] device=${DEVICE_ID} pot=${command.potId} relay=${state.pump ? "ON" : "OFF"} mode=${command.mode} result=${result.success}`,
       );
@@ -155,6 +178,9 @@ async function processCommands() {
 }
 
 function tickEnvironment() {
+  if (Date.now() - lastServerCommunicationAt > FAILSAFE_MS) {
+    for (const state of Object.values(potStates)) state.pump = false;
+  }
   temperature = Math.round((temperature + (Math.random() - 0.45) * 0.4) * 10) / 10;
 
   for (const state of Object.values(potStates)) {
@@ -183,6 +209,7 @@ async function sendTelemetry() {
         pump: state.pump,
       })),
     });
+    lastServerCommunicationAt = Date.now();
 
     const summary = Object.entries(potStates)
       .map(([potId, state]) => `${potId}: ${state.moisture}%`)
